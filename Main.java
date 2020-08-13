@@ -16,6 +16,26 @@ public class Main {
                 "2. Log out\n" +
                 "0. Exit");
     }
+    public static boolean CheckLuhnAlgorithm(String ccNumber)
+    {
+        int sum = 0;
+        boolean alternate = false;
+        for (int i = ccNumber.length() - 1; i >= 0; i--)
+        {
+            int n = Integer.parseInt(ccNumber.substring(i, i + 1));
+            if (alternate)
+            {
+                n *= 2;
+                if (n > 9)
+                {
+                    n = (n % 10) + 1;
+                }
+            }
+            sum += n;
+            alternate = !alternate;
+        }
+        return (sum % 10 == 0);
+    }
     public static void main(String[] args) {
         List<String> cardNumberS = new ArrayList<>();
         List<String> cardPinS = new ArrayList<>();
@@ -36,12 +56,17 @@ public class Main {
                     System.out.println("Your card has been created");
 
                     System.out.println("Your card number:");
-                    StringBuilder tempForCard = new StringBuilder();
-                    for (int i = 0; i < 10; i++) {
-                        tempForCard.append(random.nextInt(10));
+                    while (true) {
+                        StringBuilder tempForCard = new StringBuilder();
+                        for (int i = 0; i < 10; i++) {
+                            tempForCard.append(random.nextInt(10));
+                        }
+                        if (CheckLuhnAlgorithm("400000" + tempForCard)) {
+                            cardNumberS.add("400000" + tempForCard);
+                            System.out.println(cardNumberS.get(cardNumberS.size() - 1));
+                            break;
+                        }
                     }
-                    cardNumberS.add("400000" + tempForCard);
-                    System.out.println(cardNumberS.get(cardNumberS.size() - 1));
 
                     System.out.println("Your card PIN:");
                     StringBuilder tempForPin = new StringBuilder();
