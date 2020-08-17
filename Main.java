@@ -1,7 +1,6 @@
 package banking;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.sql.*;
 import java.util.Random;
 import java.util.Scanner;
 
@@ -16,8 +15,7 @@ public class Main {
                 "2. Log out\n" +
                 "0. Exit");
     }
-    public static boolean CheckLuhnAlgorithm(String ccNumber)
-    {
+    public static boolean CheckLuhnAlgorithm(String ccNumber) {
         int sum = 0;
         boolean alternate = false;
         for (int i = ccNumber.length() - 1; i >= 0; i--)
@@ -36,13 +34,120 @@ public class Main {
         }
         return (sum % 10 == 0);
     }
+    private static Connection connectToDatabase(String url) {
+        Connection connection = null;
+        try {
+            connection = DriverManager.getConnection(url);
+        } catch (SQLException e) {
+            System.out.println("Exception while connecting to database");
+            System.out.println(e.getMessage());
+        }
+        return connection;
+    }
+    public static void createNewDatabase(String url) {
+        try (Connection connection = connectToDatabase(url)) {
+            if (connection != null) {
+                DatabaseMetaData databaseMetaData = connection.getMetaData();
+            }
+        } catch (SQLException e) {
+            System.out.println(e.getMessage());
+        }
+    }
+    public static void createNewTableInDatabase(String url) {
+
+        // SQl statement for creating a new table
+        String sql = "CREATE TABLE IF NOT EXISTS card (\n"
+                + "     id INTEGER PRIMARY KEY,\n"
+                + "     number TEXT,\n"
+                + "     pin TEXT,\n"
+                + "     balance INTEGER DEFAULT 0"
+                + ");";
+
+        try (Connection connection = connectToDatabase(url)){
+            Statement statement = connection.createStatement();
+            // create a new table
+            statement.execute(sql);
+        } catch (SQLException e) {
+            System.out.println(e.getMessage());
+        }
+    }
+    public static void insertDataToDatabase(String data, String url) {
+        String sql;
+        if (data.length() > 4) {
+            sql = "INSERT INTO card(number) VALUES(?)";
+        } else {
+            sql = "INSERT INTO card(pin) VALUES(?)";
+        }
+        try (Connection connection = connectToDatabase(url);
+            PreparedStatement preparedStatement = connection.prepareStatement(sql)) {
+            preparedStatement.setString(1, data);
+            preparedStatement.executeUpdate();
+        } catch (SQLException e) {
+            System.out.println(e.getMessage());
+        }
+    }
+    public static void selectDataFromDatabase(String data, String url) {
+        String sql = "";
+        String temp = "";
+        if (data.length() == 16) {
+            sql = "SELECT number FROM card WHERE number=?";
+            temp = "number";
+        } else if (data.length() == 4) {
+            sql = "SELECT pin FROM card WHERE pin=?";
+            temp = "pin";
+        } else if (data.equals("Balance")) {
+            sql = "SELECT balance FROM card";
+            temp = "balance";
+        }
+        try (Connection connection = connectToDatabase(url);
+             PreparedStatement preparedStatement = connection.prepareStatement(sql)) {
+            if (data.equals("Balance")) {
+                ResultSet resultSet = preparedStatement.executeQuery();
+                System.out.println(resultSet.getInt(temp));
+            } else {
+                preparedStatement.setString(1, data);
+                ResultSet resultSet = preparedStatement.executeQuery();
+                System.out.println(resultSet.getString(temp));
+            }
+        } catch (SQLException e) {
+            System.out.println(e.getMessage());
+        }
+    }
+    public static boolean valueExistsOrNotInDatabase(String data, String url) {
+        String sql;
+        if (data.length() == 4) {
+            sql = "SELECT EXISTS(SELECT pin FROM card WHERE pin = data)";
+        } else {
+            sql = "SELECT EXISTS(SELECT number FROM card WHERE number = data)";
+        }
+        try (Connection connection = connectToDatabase(url);
+             Statement statement = connection.createStatement();
+             ResultSet resultSet = statement.executeQuery(sql)) {
+            return resultSet.next();
+        } catch (SQLException e) {
+            System.out.println(e.getMessage());
+            return false;
+        }
+    }
+    public static void dropTableInDatabase(String url) {
+        String sql = "DROP TABLE IF EXISTS card";
+        try (Connection connection = connectToDatabase(url);
+             Statement statement = connection.createStatement()) {
+            statement.executeUpdate(sql);
+        } catch (SQLException e) {
+            System.out.println(e.getMessage());
+        }
+    }
     public static void main(String[] args) {
-        List<String> cardNumberS = new ArrayList<>();
-        List<String> cardPinS = new ArrayList<>();
         Scanner scanner = new Scanner(System.in);
         Random random = new Random();
         boolean tr = true;
         boolean ft = true;
+        String url = "jdbc:sqlite:" + args[1];
+
+        dropTableInDatabase(url);
+        createNewDatabase(url);
+        createNewTableInDatabase(url);
         while (tr) {
             printAction();
             int action = scanner.nextInt();
@@ -62,8 +167,8 @@ public class Main {
                             tempForCard.append(random.nextInt(10));
                         }
                         if (CheckLuhnAlgorithm("400000" + tempForCard)) {
-                            cardNumberS.add("400000" + tempForCard);
-                            System.out.println(cardNumberS.get(cardNumberS.size() - 1));
+                            insertDataToDatabase("400000" + tempForCard, url);
+                            selectDataFromDatabase("400000" + tempForCard, url);
                             break;
                         }
                     }
@@ -73,8 +178,8 @@ public class Main {
                     for (int i = 0; i < 4; i++) {
                         tempForPin.append(random.nextInt(10));
                     }
-                    cardPinS.add("" + tempForPin);
-                    System.out.println(cardPinS.get(cardPinS.size() - 1));
+                    insertDataToDatabase(String.valueOf(tempForPin), url);
+                    selectDataFromDatabase(String.valueOf(tempForPin), url);
                     System.out.println();
                     break;
                 case 2:
@@ -83,7 +188,7 @@ public class Main {
                     String card = scanner1.nextLine();
                     System.out.println("Enter your PIN:");
                     String pin = scanner1.nextLine();
-                    if (!(cardNumberS.contains(card)) || !(cardPinS.contains(pin))) {
+                    if (!(valueExistsOrNotInDatabase(card, url)) || !(valueExistsOrNotInDatabase(pin, url))) {
                         System.out.println("Wrong card number or PIN!");
                         System.out.println();
                     } else {
@@ -99,7 +204,8 @@ public class Main {
                                     tr = false;
                                     break;
                                 case 1:
-                                    System.out.println("Balance: 0");
+                                    System.out.print("Balance: ");
+                                    selectDataFromDatabase("Balance", url);
                                     System.out.println();
                                     break;
                                 case 2:
