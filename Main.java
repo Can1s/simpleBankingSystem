@@ -1,222 +1,281 @@
 package banking;
 
 import java.sql.*;
-import java.util.Random;
 import java.util.Scanner;
 
 public class Main {
-    public static void printAction() {
-        System.out.println("1. Create an account\n" +
-                "2. Log into account\n" +
-                "0. Exit");
-    }
-    public static void printActionAfterLog() {
-        System.out.println("1. Balance\n" +
-                "2. Log out\n" +
-                "0. Exit");
-    }
-    public static boolean CheckLuhnAlgorithm(String ccNumber) {
-        int sum = 0;
-        boolean alternate = false;
-        for (int i = ccNumber.length() - 1; i >= 0; i--)
-        {
-            int n = Integer.parseInt(ccNumber.substring(i, i + 1));
-            if (alternate)
-            {
-                n *= 2;
-                if (n > 9)
-                {
-                    n = (n % 10) + 1;
+    static boolean programWorking = true;
+
+    public static String getUrl(String[] args) {
+        String fileName = "";
+        if (args.length > 0) {
+            for (int i = 0; i < args.length; i++) {
+                if (args[i].equals("-fileName")) {
+                    fileName = args[i + 1];
+                    break;
                 }
             }
-            sum += n;
-            alternate = !alternate;
         }
-        return (sum % 10 == 0);
+        return fileName;
     }
-    private static Connection connectToDatabase(String url) {
-        Connection connection = null;
-        try {
-            connection = DriverManager.getConnection(url);
+
+    public static void createDBandTable(String fileName) {
+        String url = "jdbc:sqlite:" + fileName;
+        String sql = "CREATE TABLE IF NOT EXISTS card(\n" +
+                "    id INTEGER PRIMARY KEY, \n" +
+                "    number TEXT, \n" +
+                "    pin TEXT, \n" +
+                "    balance INTEGER DEFAULT 0\n" +
+                " );";
+
+        try (Connection conn = DriverManager.getConnection(url);
+             Statement stmt = conn.createStatement()) {
+            stmt.execute(sql);
         } catch (SQLException e) {
-            System.out.println("Exception while connecting to database");
-            System.out.println(e.getMessage());
+            e.printStackTrace();
         }
-        return connection;
     }
-    public static void createNewDatabase(String url) {
-        try (Connection connection = connectToDatabase(url)) {
-            if (connection != null) {
-                DatabaseMetaData databaseMetaData = connection.getMetaData();
+
+    public static void addBankAccount(String fileName) {
+        BankAccount account = new BankAccount();
+
+        String url = "jdbc:sqlite:" + fileName;
+        String sql = "INSERT INTO card(number,pin) VALUES(?,?)";
+
+        try (Connection conn = DriverManager.getConnection(url);
+             PreparedStatement prepareStatement = conn.prepareStatement(sql)) {
+
+            prepareStatement.setString(1, account.getCardNumber());
+            prepareStatement.setString(2, account.getPinCode());
+
+            prepareStatement.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static boolean findAccountAndLogin(String fileName, String cardNumber, String pin) {
+
+        String url = "jdbc:sqlite:" + fileName;
+        String sql = "SELECT number, pin FROM card WHERE number = ? AND pin = ?";
+
+        try (Connection conn = DriverManager.getConnection(url);
+             PreparedStatement prepareStatement = conn.prepareStatement(sql)) {
+            prepareStatement.setString(1, cardNumber);
+            prepareStatement.setString(2, pin);
+
+            ResultSet rs = prepareStatement.executeQuery();
+            boolean empty = true;
+            while (rs.next()) {
+                empty = false;
             }
-        } catch (SQLException e) {
-            System.out.println(e.getMessage());
-        }
-    }
-    public static void createNewTableInDatabase(String url) {
-
-        // SQl statement for creating a new table
-        String sql = "CREATE TABLE IF NOT EXISTS card (\n"
-                + "     id INTEGER PRIMARY KEY,\n"
-                + "     number TEXT,\n"
-                + "     pin TEXT,\n"
-                + "     balance INTEGER DEFAULT 0"
-                + ");";
-
-        try (Connection connection = connectToDatabase(url)){
-            Statement statement = connection.createStatement();
-            // create a new table
-            statement.execute(sql);
-        } catch (SQLException e) {
-            System.out.println(e.getMessage());
-        }
-    }
-    public static void insertDataToDatabase(String data, String url) {
-        String sql;
-        if (data.length() > 4) {
-            sql = "INSERT INTO card(number) VALUES(?)";
-        } else {
-            sql = "INSERT INTO card(pin) VALUES(?)";
-        }
-        try (Connection connection = connectToDatabase(url);
-            PreparedStatement preparedStatement = connection.prepareStatement(sql)) {
-            preparedStatement.setString(1, data);
-            preparedStatement.executeUpdate();
-        } catch (SQLException e) {
-            System.out.println(e.getMessage());
-        }
-    }
-    public static void selectDataFromDatabase(String data, String url) {
-        String sql = "";
-        String temp = "";
-        if (data.length() == 16) {
-            sql = "SELECT number FROM card WHERE number=?";
-            temp = "number";
-        } else if (data.length() == 4) {
-            sql = "SELECT pin FROM card WHERE pin=?";
-            temp = "pin";
-        } else if (data.equals("Balance")) {
-            sql = "SELECT balance FROM card";
-            temp = "balance";
-        }
-        try (Connection connection = connectToDatabase(url);
-             PreparedStatement preparedStatement = connection.prepareStatement(sql)) {
-            if (data.equals("Balance")) {
-                ResultSet resultSet = preparedStatement.executeQuery();
-                System.out.println(resultSet.getInt(temp));
+            if (empty) {
+                System.out.println("Wrong card number or PIN!");
+                return false;
             } else {
-                preparedStatement.setString(1, data);
-                ResultSet resultSet = preparedStatement.executeQuery();
-                System.out.println(resultSet.getString(temp));
+                return true;
             }
         } catch (SQLException e) {
-            System.out.println(e.getMessage());
+            e.printStackTrace();
+            return false;
         }
+
     }
-    public static boolean valueExistsOrNotInDatabase(String data, String url) {
-        String sql;
-        if (data.length() == 4) {
-            sql = "SELECT EXISTS(SELECT pin FROM card WHERE pin = data)";
-        } else {
-            sql = "SELECT EXISTS(SELECT number FROM card WHERE number = data)";
-        }
-        try (Connection connection = connectToDatabase(url);
-             Statement statement = connection.createStatement();
-             ResultSet resultSet = statement.executeQuery(sql)) {
-            return resultSet.next();
+
+    public static boolean cardContainsNumber(String fileName, String cardNumber) {
+        String url = "jdbc:sqlite:" + fileName;
+        String sql = "SELECT number FROM card WHERE number = ?";
+
+        try (Connection conn = DriverManager.getConnection(url);
+             PreparedStatement prepareStatement = conn.prepareStatement(sql)) {
+            prepareStatement.setString(1, cardNumber);
+
+            ResultSet rs = prepareStatement.executeQuery();
+            boolean empty = true;
+            while (rs.next()) {
+                empty = false;
+            }
+            if (empty) {
+                System.out.println("Such a card does not exist.");
+                return false;
+            } else {
+                return true;
+            }
         } catch (SQLException e) {
-            System.out.println(e.getMessage());
+            e.printStackTrace();
             return false;
         }
     }
-    public static void dropTableInDatabase(String url) {
-        String sql = "DROP TABLE IF EXISTS card";
-        try (Connection connection = connectToDatabase(url);
-             Statement statement = connection.createStatement()) {
-            statement.executeUpdate(sql);
-        } catch (SQLException e) {
-            System.out.println(e.getMessage());
+
+    public static void accountMenu(String dataBaseFileName, String cardNumber, String pinNumber, Scanner in) {
+        if (!findAccountAndLogin(dataBaseFileName, cardNumber, pinNumber)) {
+            return;
+        } else {
+            System.out.println("\nYou have successfully logged in!\n");
+            while (true) {
+
+                int balance = getBalance(dataBaseFileName, cardNumber);
+
+                System.out.println(
+                        "1. Balance\n" +
+                                "2. Add income\n" +
+                                "3. Do transfer\n" +
+                                "4. Close account\n" +
+                                "5. Log out\n" +
+                                "0. Exit");
+                String choice = in.nextLine();
+                if (Integer.parseInt(choice) == 0) {
+                    programWorking = false;
+                    break;
+                }
+                if (Integer.parseInt(choice) == 1) {
+                    System.out.println("\nBalance: " + balance + "\n");
+                    continue;
+                }
+
+                if (Integer.parseInt(choice) == 2) {
+                    System.out.println("Enter income:");
+                    int deposit = Integer.parseInt(in.nextLine());
+
+                    addIncome(dataBaseFileName, cardNumber, balance, deposit);
+
+                    System.out.println("Income was added!");
+                    continue;
+                }
+
+                if (Integer.parseInt(choice) == 3 ) {
+                    System.out.println("\nTransfer\nEnter card number:");
+                    String numberToTransfer = in.nextLine();
+
+                    if (numberToTransfer.equals(cardNumber)) {
+                        System.out.println("You can't transfer money to the same account!");
+                        continue;
+                    }
+
+                    if (!BankAccount.checkLuhnAlgorithm(numberToTransfer)) {
+                        System.out.println("Probably you made mistake in the card number. Please try again!");
+                        continue;
+                    } else {
+                        if (cardContainsNumber(dataBaseFileName, numberToTransfer)) {
+                            System.out.println("Enter how much money you want to transfer:");
+                            int transfer = Integer.parseInt(in.nextLine());
+                            int balanceOfNumberToTransfer = getBalance(dataBaseFileName, numberToTransfer);
+                            if (transfer <= balance) {
+                                addIncome(dataBaseFileName,numberToTransfer,balanceOfNumberToTransfer, transfer);
+                                removeMoney(dataBaseFileName, cardNumber, balance, transfer);
+                                System.out.println("Success!");
+
+
+                            } else {
+                                System.out.println("Not enough money!");
+                            }
+                            continue;
+                        }
+                    }
+                }
+
+                if (Integer.parseInt(choice) == 4) {
+                    removeAccount(dataBaseFileName, cardNumber);
+                    break;
+                }
+
+                if (Integer.parseInt(choice) == 5 ) break;
+
+            }
         }
     }
+
+    public static int getBalance(String fileName, String cardNumber) {
+        String url = "jdbc:sqlite:" + fileName;
+        String sql = "SELECT balance FROM card WHERE number = ?";
+        int balance = -1;
+
+        try (Connection conn = DriverManager.getConnection(url);
+             PreparedStatement prepareStatement = conn.prepareStatement(sql)) {
+            prepareStatement.setString(1, cardNumber);
+            ResultSet rs = prepareStatement.executeQuery();
+            while(rs.next()) {
+                balance = rs.getInt("balance");
+                return balance;
+            }
+
+
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return balance;
+    }
+
+    public static void addIncome(String fileName, String cardNumber, int oldBalance, int deposit) {
+
+        String url = "jdbc:sqlite:" + fileName;
+        String sql = "UPDATE card SET balance = ? WHERE number = ?";
+
+        try (Connection conn = DriverManager.getConnection(url);
+             PreparedStatement prepareStatement = conn.prepareStatement(sql)) {
+            prepareStatement.setInt(1, oldBalance + deposit);
+            prepareStatement.setString(2, cardNumber);
+            prepareStatement.executeUpdate();
+
+
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+
+    }
+
+    public static void removeMoney(String fileName, String cardNumber,int oldBalance, int deposit) {
+        String url = "jdbc:sqlite:" + fileName;
+        String sql = "UPDATE card SET balance = ? WHERE number = ?";
+
+        try (Connection conn = DriverManager.getConnection(url);
+             PreparedStatement prepareStatement = conn.prepareStatement(sql)) {
+            prepareStatement.setInt(1, oldBalance - deposit);
+            prepareStatement.setString(2, cardNumber);
+            prepareStatement.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static void removeAccount(String fileName, String cardNumber) {
+        String url = "jdbc:sqlite:" + fileName;
+        String sql = "DELETE FROM card WHERE number = ?";
+
+        try (Connection conn = DriverManager.getConnection(url);
+             PreparedStatement prepareStatement = conn.prepareStatement(sql)) {
+            prepareStatement.setString(1, cardNumber);
+            prepareStatement.executeUpdate();
+            System.out.println("The account has been closed!");
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+
     public static void main(String[] args) {
-        Scanner scanner = new Scanner(System.in);
-        Random random = new Random();
-        boolean tr = true;
-        boolean ft = true;
-        String url = "jdbc:sqlite:" + args[1];
+        String dataBaseFileName = getUrl(args);
 
-        dropTableInDatabase(url);
-        createNewDatabase(url);
-        createNewTableInDatabase(url);
-        while (tr) {
-            printAction();
-            int action = scanner.nextInt();
-            System.out.println();
-            switch (action) {
-                case 0:
-                    System.out.println("Bye!");
-                    tr = false;
-                    break;
-                case 1:
-                    System.out.println("Your card has been created");
+        createDBandTable(dataBaseFileName);
 
-                    System.out.println("Your card number:");
-                    while (true) {
-                        StringBuilder tempForCard = new StringBuilder();
-                        for (int i = 0; i < 10; i++) {
-                            tempForCard.append(random.nextInt(10));
-                        }
-                        if (CheckLuhnAlgorithm("400000" + tempForCard)) {
-                            insertDataToDatabase("400000" + tempForCard, url);
-                            selectDataFromDatabase("400000" + tempForCard, url);
-                            break;
-                        }
-                    }
+        Scanner in = new Scanner(System.in);
 
-                    System.out.println("Your card PIN:");
-                    StringBuilder tempForPin = new StringBuilder();
-                    for (int i = 0; i < 4; i++) {
-                        tempForPin.append(random.nextInt(10));
-                    }
-                    insertDataToDatabase(String.valueOf(tempForPin), url);
-                    selectDataFromDatabase(String.valueOf(tempForPin), url);
-                    System.out.println();
-                    break;
-                case 2:
-                    Scanner scanner1 = new Scanner(System.in);
-                    System.out.println("Enter your card number:");
-                    String card = scanner1.nextLine();
-                    System.out.println("Enter your PIN:");
-                    String pin = scanner1.nextLine();
-                    if (!(valueExistsOrNotInDatabase(card, url)) || !(valueExistsOrNotInDatabase(pin, url))) {
-                        System.out.println("Wrong card number or PIN!");
-                        System.out.println();
-                    } else {
-                        System.out.println("You have successfully logged in!");
-                        System.out.println();
-                        while (ft) {
-                            printActionAfterLog();
-                            int actionLog = scanner.nextInt();
-                            System.out.println();
-                            switch (actionLog) {
-                                case 0:
-                                    ft = false;
-                                    tr = false;
-                                    break;
-                                case 1:
-                                    System.out.print("Balance: ");
-                                    selectDataFromDatabase("Balance", url);
-                                    System.out.println();
-                                    break;
-                                case 2:
-                                    System.out.println("You have successfully logged out!");
-                                    ft = false;
-                                    System.out.println();
-                                    break;
-                            }
-                        }
-                    }
-                    break;
+
+        while (programWorking) {
+            System.out.println(
+                    "1. Create an account\n" +
+                            "2. Log into account\n" +
+                            "0. Exit");
+
+            String choice = in.nextLine();
+            if (Integer.parseInt(choice) == 0) programWorking = false;
+            if (Integer.parseInt(choice) == 1) addBankAccount(dataBaseFileName);
+            if (Integer.parseInt(choice) == 2) {
+                System.out.println("Enter your card number:");
+                String cardNumber = in.nextLine();
+                System.out.println("Enter your PIN:");
+                String pinNumber = in.nextLine();
+                accountMenu(dataBaseFileName, cardNumber, pinNumber, in);
             }
         }
     }
